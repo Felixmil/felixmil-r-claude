@@ -1,7 +1,7 @@
 {
   "name": "felixmil-r-claude",
   "description": "Triage-focused R package testing for Claude Code: a `running-r-tests` skill plus a context-isolating `r-test-runner` subagent.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Felix Mil",
     "url": "https://github.com/felixmil"
