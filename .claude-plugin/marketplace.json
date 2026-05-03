@@ -1,0 +1,17 @@
+{
+  "name": "felixmil-r-claude",
+  "owner": {
+    "name": "Felix Mil",
+    "url": "https://github.com/felixmil"
+  },
+  "plugins": [
+    {
+      "name": "felixmil-r-claude",
+      "source": {
+        "source": "github",
+        "repo": "felixmil/felixmil-r-claude"
+      },
+      "description": "Triage-focused R package testing for Claude Code: a `running-r-tests` skill plus a context-isolating `r-test-runner` subagent."
+    }
+  ]
+}

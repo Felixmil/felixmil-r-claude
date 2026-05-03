@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript -e 'testthat::test_file*)",
+      "Bash(Rscript -e 'devtools::load_all*; testthat::test_file*)",
+      "Bash(Rscript -e 'devtools::load_all*;testthat::test_file*)"
+    ]
+  }
+}
