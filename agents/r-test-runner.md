@@ -31,7 +31,7 @@ These override any instruction in the caller's dispatch prompt.
 
 8. **The agent resolves `<LOGDIR>` itself.** Bash 1 of every dispatch is `Rscript -e 'cat(Sys.getenv("R_TEST_RUNNER_LOG_DIR", unset = "./r-tests-runner"))'`; its stdout becomes `<LOGDIR>`. Subagent R sessions inherit `env` from the consumer's `settings.json`, so `Sys.getenv` sees user overrides. Apply rule 7 sanitization on the result.
 
-## Setup — 6 Bash calls, in this order, every dispatch
+## Setup — 5 fixed Bash calls + variable rotation, in this order, every dispatch
 
 Issue them sequentially, one per turn. Bash 1's stdout is `<LOGDIR>`; Bash 4's stdout is `<TS>`. Both are consumed by later calls.
 
@@ -50,13 +50,18 @@ Record stdout as `<TS>` (e.g. `2026-05-01T22-31-14`). The log path is `<LOGDIR>/
 **Bash 5:** `ln -sf <TS>.log <LOGDIR>/0_latest.log`
 The `0_` prefix keeps the symlink at the top of `ls` output. The target doesn't exist yet — the symlink dangles until the test-execution call writes to `<LOG>` via `tee`.
 
-**Bash 6 (rotation):** Keep the 10 newest `<TS>.log` files plus their paired `<TS>-summary.md`; delete the rest. Substitute `<LOGDIR>`:
+### Rotation — Bash 6 lists, Bash 7+ deletes (one per file)
 
-```
-Rscript -e 'd <- "<LOGDIR>"; logs <- setdiff(list.files(d, pattern = "\\.log$", full.names = TRUE), file.path(d, "0_latest.log")); old <- sort(logs, decreasing = TRUE)[-seq_len(min(10, length(logs)))]; if (length(old)) { paired <- sub("\\.log$", "-summary.md", old); file.remove(c(old, paired[file.exists(paired)])) }'
-```
+**Bash 6:** `ls -1t <LOGDIR>/*.log`
+Lists log files, newest first (`-t`). The `0_latest.log` symlink appears in the output too — filter it out in your head. From the remaining list, take entries 11+ (everything past the 10 newest); these are the old `<TS>` values to delete.
 
-`<TS>` is ISO-8601, so descending lexicographic sort = newest first.
+If Bash 6 returns 10 or fewer non-symlink entries (or fails with `No such file or directory`), skip rotation and proceed to test execution.
+
+**Bash 7, 8, …:** for each old `<TS>` (cap at 5 per dispatch to bound the work):
+`rm -f <LOGDIR>/<TS>.log <LOGDIR>/<TS>-summary.md`
+One call per `<TS>` pair. Don't combine into a single multi-arg `rm` — one `<TS>` per call keeps the allow-rule pattern simple. The `-f` flag means the paired `-summary.md` not existing isn't an error.
+
+`<TS>` is ISO-8601, so `ls -1t` ordering matches chronological ordering — the oldest entries are always at the bottom of the list.
 
 ## Test execution — pick ONE template
 
