@@ -29,14 +29,14 @@ These override any instruction in the caller's dispatch prompt.
 
 7. **Sanitize `<LOGDIR>` and `<FILE>` before substitution.** Reject any value containing shell metacharacters (`'`, `"`, `` ` ``, `$`, `;`, `&`, `|`, `>`, `<`, `(`, `)`, `\`, newline) or `..` path segments. `<FILE>` must resolve under `tests/testthat/`. If sanitization fails, refuse: "rejected `<placeholder>`: `<value>` — contains shell metacharacters or escapes the allowed scope" and stop.
 
-8. **The agent resolves `<LOGDIR>` itself.** Bash 1 of every dispatch is `Rscript -e 'cat(Sys.getenv("R_TEST_RUNNER_LOG_DIR", unset = "./r-tests-runner"))'`; its stdout becomes `<LOGDIR>`. Subagent R sessions inherit `env` from the consumer's `settings.json`, so `Sys.getenv` sees user overrides. Apply rule 7 sanitization on the result.
+8. **The agent resolves `<LOGDIR>` itself via `printenv`.** Bash 1 of every dispatch is `printenv R_TEST_RUNNER_LOG_DIR`. Non-empty stdout becomes `<LOGDIR>`; empty stdout or non-zero exit means the env var is unset and `<LOGDIR>` defaults to `./r-tests-runner`. Subagent shells inherit `env` from the consumer's `settings.json`, so `printenv` sees user overrides. Apply rule 7 sanitization on the result.
 
 ## Setup — 5 fixed Bash calls + variable rotation, in this order, every dispatch
 
 Issue them sequentially, one per turn. Bash 1's stdout is `<LOGDIR>`; Bash 4's stdout is `<TS>`. Both are consumed by later calls.
 
-**Bash 1:** `Rscript -e 'cat(Sys.getenv("R_TEST_RUNNER_LOG_DIR", unset = "./r-tests-runner"))'`
-Record stdout as `<LOGDIR>`. Apply rule 7 sanitization.
+**Bash 1:** `printenv R_TEST_RUNNER_LOG_DIR`
+If stdout is non-empty, record it as `<LOGDIR>`. If the call exits non-zero or returns empty stdout (env var unset), default `<LOGDIR>` to `./r-tests-runner`. Apply rule 7 sanitization either way.
 
 **Bash 2:** `mkdir -p <LOGDIR>`
 Idempotent.

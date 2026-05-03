@@ -54,7 +54,7 @@ To override, set `R_TEST_RUNNER_LOG_DIR` in your **user** or **project** `settin
 }
 ```
 
-The subagent reads this itself via `Rscript -e 'Sys.getenv(...)'` on every dispatch.
+The subagent reads this itself via `printenv` on every dispatch.
 
 ## What ships in this plugin
 

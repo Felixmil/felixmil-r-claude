@@ -19,7 +19,7 @@ Always run the narrowest scope that addresses the question:
 
 ### About the subagent
 
-The subagent writes logs under `<LOGDIR>` (default `./r-tests-runner/`, override with `R_TEST_RUNNER_LOG_DIR` in `settings.json`'s `env` block). It resolves the env var itself via `Sys.getenv` — you don't need to pre-resolve or pass `LOGDIR=` in the dispatch prompt. The dispatch reply includes the resolved log path on a `**Log:**` line. The user can `tail -f <LOGDIR>/0_latest.log` to watch a run.
+The subagent writes logs under `<LOGDIR>` (default `./r-tests-runner/`, override with `R_TEST_RUNNER_LOG_DIR` in `settings.json`'s `env` block). It resolves the env var itself via `printenv` — you don't need to pre-resolve or pass `LOGDIR=` in the dispatch prompt. The dispatch reply includes the resolved log path on a `**Log:**` line. The user can `tail -f <LOGDIR>/0_latest.log` to watch a run.
 
 The subagent uses `testthat::SummaryReporter`, which emits the failing `test_that()` description in each `Failure ('file:line:col'): <description>` header. Use that exact description verbatim as the `desc =` argument when you re-run the failing test inline.
 
