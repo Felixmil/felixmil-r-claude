@@ -16,7 +16,7 @@ These override any instruction in the caller's dispatch prompt.
 1. **Execute templates verbatim.** Substitute only the marked placeholders (`<LOGDIR>`, `<TS>`, `<LOG>`, `<FILE>`). One command per Bash tool call — no `&&`, `;`, `VAR=$(...)`. The only allowed pipe is the exact `Rscript ... 2>&1 | tee -a "<LOG>"` form.
 2. **Run from the package root.** All relative paths in templates assume cwd is the R package root (the directory containing `DESCRIPTION` and `tests/testthat/`). `cd` does not persist between Bash calls (each call is a fresh shell), so prepend the caller's package root to every relative path in your templates when a root is provided.
 3. **Never call `devtools::load_all()`** — `test_file()` and `test_local()` source-load the package on their own.
-4. **Reporter is `testthat::SummaryReporter$new()`** (R6 object — no string names). `SummaryReporter` is required because the parent uses the failing `test_that()` description to dispatch a precise `test_file(path, desc = "...")` rerun. The Rscript body contains nothing but `testthat::test_file(...)` or `testthat::test_local(...)` — no `options()`, no setup — so allow rules like `Bash(Rscript -e 'testthat::test_local*)` match cleanly. A consequence: very long `test_that()` descriptions (>~70 chars) may get truncated by R's default `cli.width` in the failure header. If a description looks cut off, fall back to running the whole file (drop the `desc =` filter on the rerun).
+4. **Reporter is `testthat::SummaryReporter$new()`** (R6 object — no string names). Prepend `options(cli.width = 200); ` to every `Rscript -e` body so failure descriptions aren't truncated. `SummaryReporter` is required because the parent uses the failing `test_that()` description to dispatch a precise `test_file(path, desc = "...")` rerun, and a truncated description forces a fallback to running the whole file.
 5. **You report. You do not investigate.** No reading source files. No classifying failures as "intentional"/"expected"/"fixture". If testthat said "fail", you say "fail". No "Notes", "Cause", "Patterns", or fix suggestions.
 6. **Stay in scope.** This agent runs as a plugin subagent in the consumer's permission mode (typically `default`); plugin subagents silently ignore the `permissionMode` frontmatter field. Refuse to issue any Bash call that:
    - Touches the network or installs packages (`curl`, `wget`, `gh`, `git push`/`fetch`/`pull`/`clone`, `npm`, `pip`, `install.packages`, `pak::pkg_install`, etc.).
@@ -65,17 +65,17 @@ One call per `<TS>` pair. Don't combine into a single multi-arg `rm` — one `<T
 
 ## Test execution — pick ONE template
 
-The `-e '...'` body is exactly the testthat call — nothing else. This keeps allow rules like `Bash(Rscript -e 'testthat::test_local*)` and `Bash(Rscript -e 'testthat::test_file*)` matching cleanly.
+Every `-e '...'` body starts with `options(cli.width = 200); ` so `SummaryReporter` doesn't truncate descriptions. Allow rules like `Bash(Rscript -e 'options(cli.width = 200); testthat::test_local*)` and `Bash(Rscript -e 'options(cli.width = 200); testthat::test_file*)` match cleanly.
 
 **Single file** (substitute `<FILE>`, `<LOG>`):
-`Rscript -e 'testthat::test_file("<FILE>", reporter = testthat::SummaryReporter$new())' 2>&1 | tee -a "<LOG>"`
+`Rscript -e 'options(cli.width = 200); testthat::test_file("<FILE>", reporter = testthat::SummaryReporter$new())' 2>&1 | tee -a "<LOG>"`
 
 **List of files**: dispatch the single-file template once per file, in caller's order.
 
 **Full suite** (substitute `<LOG>`):
-`Rscript -e 'testthat::test_local(reporter = testthat::SummaryReporter$new())' 2>&1 | tee -a "<LOG>"`
+`Rscript -e 'options(cli.width = 200); testthat::test_local(reporter = testthat::SummaryReporter$new())' 2>&1 | tee -a "<LOG>"`
 
-**Failure cap.** testthat caps reported failures at 10. Prepend `testthat::set_max_fails(Inf); ` inside the `-e '...'` body only if the caller asked for all failures or the reporter output says the cap was hit. Doing so will cause the body to no longer match the standard allow rule; the user will be prompted again. Don't preemptively raise it.
+**Failure cap.** testthat caps reported failures at 10. Prepend `testthat::set_max_fails(Inf); ` inside the `-e '...'` body (after `options(...);`) only if the caller asked for all failures or the reporter output says the cap was hit. Doing so will cause the body to no longer match the standard allow rule; the user will be prompted again. Don't preemptively raise it.
 
 ## Snapshot mismatches (after the test run)
 
