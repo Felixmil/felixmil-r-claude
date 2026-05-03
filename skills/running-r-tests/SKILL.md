@@ -42,6 +42,10 @@ The only exceptions to this whole rule: (a) the user explicitly asks for raw inl
 
 The `r-test-runner` subagent writes logs and summaries under a configurable directory — default `./r-tests-runner/`, overridable per-project or globally by setting `R_TEST_RUNNER_LOG_DIR` in `settings.json`'s `env` block. The directory gets a self-ignoring `.gitignore` on first run, so it's safe to leave untracked. Each dispatch produces `<LOGDIR>/<timestamp>.log` plus a `<LOGDIR>/0_latest.log` symlink (the `0_` prefix keeps it at the top of `ls`); the user can `tail -f <LOGDIR>/0_latest.log` to watch a run in progress. The reply always includes the resolved log path on a `**Log:**` line, so just read that — don't assume the default.
 
+#### If the subagent's first Bash call (`mkdir -p ...`) gets denied
+
+This means the project's `.claude/settings.local.json` is missing the allow rules for the subagent's setup commands (`mkdir`, `printf`, `ln -sf`, `tee`, etc.). Plugin-shipped allow rules don't always reach subagent shells. Tell the user to run `/setup-r-test-runner` once in this project — the skill writes the rules to `.claude/settings.local.json` — then re-dispatch.
+
 #### Resolving the log dir before dispatch
 
 **The subagent does not look up the env var itself** — subagent shells may not see the parent's `env`, and even if they did, an `echo` for the lookup would hit a permission gap. The parent (you) resolves it once in the parent shell and passes it in the dispatch prompt:
