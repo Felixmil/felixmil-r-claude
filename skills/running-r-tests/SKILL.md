@@ -5,66 +5,32 @@ description: Use whenever the user asks to run R package tests, triage test fail
 
 # Running R package tests
 
-This skill covers **test execution and failure triage** for R packages. For writing or modifying test code, use the `r-lib:testing-r-packages` skill instead — they compose: that one tells you *how to write a test*, this one tells you *how to run and triage tests*.
+This skill covers **test execution and failure triage** for R packages. For writing tests, use the `r-lib:testing-r-packages` skill instead — that one tells you *how to write a test*, this one tells you *how to run and triage tests*.
 
 ## Dispatch by scope
 
-**Always run the narrowest scope that addresses the question.** Three tiers:
+Always run the narrowest scope that addresses the question:
 
-- **Single test** (one `test_that()` or `it()` block) → run inline with `Rscript -e 'devtools::load_all(); testthat::test_file("<path>", desc = "<exact description>")'`. Use this whenever you know the specific failing test from a prior run — re-running the whole file wastes time.
-- **Single test file** → run inline with `Rscript -e 'devtools::load_all(); testthat::test_file("<path>")'`. Output is small enough to read directly; subagent dispatch just adds latency.
-- **Multiple test files or the full suite** → dispatch the `r-test-runner` subagent. **The exact dispatch shape is fixed** — see the canonical call below. Do not split it, do not run `Rscript` inline instead.
+- **Single test** (one `test_that()` block) → run inline: `Rscript -e 'devtools::load_all(); testthat::test_file("<path>", desc = "<exact description>")'`. Use this when you already know which test to re-run.
+- **Single file** → run inline: `Rscript -e 'devtools::load_all(); testthat::test_file("<path>")'`. Output is small enough to read directly.
+- **Multiple files or the full suite** → dispatch the `r-test-runner` subagent (Agent tool, `subagent_type: "r-test-runner"`, foreground — the user needs to approve setup commands on first run).
 
-### Canonical subagent call
-
-There is exactly **one** correct way to invoke `r-test-runner` from this skill:
-
-```
-Agent tool with:
-  subagent_type:  "r-test-runner"
-  prompt:         "<dispatch instructions, including LOGDIR=<resolved-path>>"
-```
-
-Run **foreground** (no `run_in_background`). Background dispatches can't surface permission prompts to the user — Bash calls that don't match an existing allow rule get auto-denied silently and the subagent stops with a setup error. Foreground keeps the user in the loop so they can approve `mkdir`, `printf`, `tee`, etc. on first use.
-
-Forgetting either property is a bug:
-
-- **Wrong tool** (`Bash` instead of `Agent`) → floods the parent context with raw `Rscript` output and bypasses the agent's SummaryReporter contract that workflow step 4 depends on. Always use the Agent tool for multi-file or full-suite runs.
-- **Missing `subagent_type: "r-test-runner"`** → you'd dispatch the wrong agent (or a generic one). Always pin the type.
-
-The subagent's transcript will stream into your context while it runs — that's the cost of staying interactive. The structured summary at the end is still what you read; the streaming output is just so the user can approve permission prompts in real time.
-
-The only exceptions: (a) the user explicitly asks for raw inline output, or (b) the `Agent` tool is unavailable.
-
-### Why `devtools::load_all()` first for inline runs
-
-`testthat::test_file()` only sources the test file, not `R/`. Without `load_all()`, package functions aren't in memory and the test fails with "could not find function". The subagent is exempt — `testthat::test_local()` source-loads the package on its own.
+`devtools::load_all()` is required for inline `test_file()` calls because `test_file()` doesn't source `R/`; without it, tests fail with "could not find function". The subagent's `test_local()` source-loads the package on its own, so it doesn't need `load_all()`.
 
 ### About the subagent
 
-The `r-test-runner` subagent writes logs and summaries under a configurable directory — default `./r-tests-runner/`, overridable per-project or globally by setting `R_TEST_RUNNER_LOG_DIR` in `settings.json`'s `env` block. The directory gets a self-ignoring `.gitignore` on first run, so it's safe to leave untracked. Each dispatch produces `<LOGDIR>/<timestamp>.log` plus a `<LOGDIR>/0_latest.log` symlink (the `0_` prefix keeps it at the top of `ls`); the user can `tail -f <LOGDIR>/0_latest.log` to watch a run in progress. The reply always includes the resolved log path on a `**Log:**` line, so just read that — don't assume the default.
+The subagent writes logs under `<LOGDIR>` (default `./r-tests-runner/`, override with `R_TEST_RUNNER_LOG_DIR` in `settings.json`'s `env` block). It resolves the env var itself via `Sys.getenv` — you don't need to pre-resolve or pass `LOGDIR=` in the dispatch prompt. The dispatch reply includes the resolved log path on a `**Log:**` line. The user can `tail -f <LOGDIR>/0_latest.log` to watch a run.
 
-#### Resolving the log dir before dispatch
-
-**The subagent does not look up the env var itself** — subagent shells may not see the parent's `env`, and even if they did, an `echo` for the lookup would hit a permission gap. The parent (you) resolves it once in the parent shell and passes it in the dispatch prompt:
-
-1. Run `echo "${R_TEST_RUNNER_LOG_DIR:-./r-tests-runner}"` in the parent's Bash to get the resolved path. (Parent's shell sees `env` from `settings.json`.)
-2. Include the line `LOGDIR=<resolved-path>` somewhere in the dispatch prompt to the `r-test-runner` subagent.
-3. If you forget, the subagent defaults to `./r-tests-runner` — same as if no env var were set.
-
-The subagent uses `testthat::SummaryReporter`, which emits the failing `test_that()` description in each `Failure ('file:line:col'): <description>` header. Use that exact description verbatim as the `desc =` argument when you re-run the failing test inline (workflow step 4 below).
+The subagent uses `testthat::SummaryReporter`, which emits the failing `test_that()` description in each `Failure ('file:line:col'): <description>` header. Use that exact description verbatim as the `desc =` argument when you re-run the failing test inline.
 
 ## Triage & regression workflow
 
-**Use this loop whenever you're triaging failures or verifying a fix across a package** — i.e. you don't yet know if the suite is green, or you've just changed code and need to confirm nothing regressed. Skip it for narrow questions ("does test-foo pass?" → just run that file) and for TDD on a single new test (write → run that one test → iterate, no full-suite dance until the feature is done).
+Use this loop when triaging failures or verifying a fix across a package. Skip it for single-file questions and for TDD on one new test.
 
-1. **Run the full suite first via the `r-test-runner` subagent** — use the `Agent` tool (`subagent_type: "r-test-runner"`, `run_in_background: true`). Do **not** call `Rscript -e 'testthat::test_local(...)'` yourself; the subagent is the canonical entry point per the hard rule above. **Do not** assume "full suite" is wasteful — the subagent is built to make this cheap, and its summary lists every failing file with the failing test names.
-2. **Identify a failure to fix** from the summary.
-3. **Implement the fix** in the relevant source file.
-4. **Re-run only the failing test inline** with `Rscript -e 'devtools::load_all(); testthat::test_file("<path>", desc = "<exact description from the summary>")'`. This is the fastest feedback loop. Only fall back to running the whole file (drop the `desc` argument) when the failure is order-dependent or the description is ambiguous.
-5. **When that test passes, re-run its file** to catch nearby regressions, then re-run the full suite via the subagent to catch regressions elsewhere.
-6. Repeat steps 2–5 until all pass.
+1. **Run the full suite via the subagent** — its summary lists every failing file with the failing test names.
+2. **Pick a failure, implement the fix.**
+3. **Re-run only the failing test inline** with `Rscript -e 'devtools::load_all(); testthat::test_file("<path>", desc = "<exact description from the summary>")'`. Drop `desc =` only if the failure is order-dependent or the description is ambiguous.
+4. **When green, re-run the file**, then re-run the full suite via the subagent to catch regressions elsewhere.
+5. Repeat 2–4 until all pass.
 
-Never run a single failing file in a loop while ignoring the rest of the suite — you'll miss regressions. Never run only the suite and never drill into individual files — you'll waste turns re-reading a long summary.
-
-If the user explicitly asks for the subagent on a single file, or for raw output on a multi-file run, honor that override.
+If the user explicitly asks for the subagent on a single file, or for raw inline output on a multi-file run, honor the override.

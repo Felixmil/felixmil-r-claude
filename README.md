@@ -54,7 +54,7 @@ To override, set `R_TEST_RUNNER_LOG_DIR` in your **user** or **project** `settin
 }
 ```
 
-The parent reads this in its own shell at dispatch time and passes the resolved path to the subagent — subagent shells may not inherit `env` from `settings.json`.
+The subagent reads this itself via `Rscript -e 'Sys.getenv(...)'` on every dispatch.
 
 ## What ships in this plugin
 
