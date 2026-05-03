@@ -1,7 +1,7 @@
 ---
 name: r-test-runner
 description: "Delegates testthat test execution for R packages and returns a condensed summary, keeping verbose stdout out of the caller's context. **Use this agent — do not run tests inline — whenever the user asks to run R tests** (one file, several files, \"run all tests\", `test_file`, `test_local`, `devtools::test`, `testthat::test_*`, \"rerun the failing test\", \"check if my tests pass\"). Accepts a list of test file paths, a directory, or a \"full suite\" instruction. Returns pass/fail/warn/skip counts plus extracted failure details, and persists the same summary as a markdown file alongside the test log under the log directory (default `./r-tests-runner/`, override via `$R_TEST_RUNNER_LOG_DIR`)."
-model: Opus
+model: Haiku
 color: green
 ---
 # R test-runner subagent
