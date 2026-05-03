@@ -13,26 +13,28 @@ This skill covers **test execution and failure triage** for R packages. For writ
 
 - **Single test** (one `test_that()` or `it()` block) → run inline with `Rscript -e 'devtools::load_all(); testthat::test_file("<path>", desc = "<exact description>")'`. Use this whenever you know the specific failing test from a prior run — re-running the whole file wastes time.
 - **Single test file** → run inline with `Rscript -e 'devtools::load_all(); testthat::test_file("<path>")'`. Output is small enough to read directly; subagent dispatch just adds latency.
-- **Multiple test files or the full suite** → dispatch the `r-test-runner` subagent. **The exact dispatch shape is fixed** — see the canonical call below. Do not split it, do not omit `run_in_background`, do not run `Rscript` inline instead.
+- **Multiple test files or the full suite** → dispatch the `r-test-runner` subagent. **The exact dispatch shape is fixed** — see the canonical call below. Do not split it, do not run `Rscript` inline instead.
 
 ### Canonical subagent call
 
-There is exactly **one** correct way to invoke `r-test-runner` from this skill. All three properties are required as a single atomic gesture:
+There is exactly **one** correct way to invoke `r-test-runner` from this skill:
 
 ```
 Agent tool with:
-  subagent_type:      "r-test-runner"
-  run_in_background:  true
-  prompt:             "<dispatch instructions, including LOGDIR=<resolved-path>>"
+  subagent_type:  "r-test-runner"
+  prompt:         "<dispatch instructions, including LOGDIR=<resolved-path>>"
 ```
 
-Forgetting any one of these properties is a bug:
+Run **foreground** (no `run_in_background`). Background dispatches can't surface permission prompts to the user — Bash calls that don't match an existing allow rule get auto-denied silently and the subagent stops with a setup error. Foreground keeps the user in the loop so they can approve `mkdir`, `printf`, `tee`, etc. on first use.
+
+Forgetting either property is a bug:
 
 - **Wrong tool** (`Bash` instead of `Agent`) → floods the parent context with raw `Rscript` output and bypasses the agent's SummaryReporter contract that workflow step 4 depends on. Always use the Agent tool for multi-file or full-suite runs.
-- **Missing `run_in_background: true`** → the subagent runs in foreground and you watch its full transcript. The summary still lands, but the context cost is wasted. Always background.
 - **Missing `subagent_type: "r-test-runner"`** → you'd dispatch the wrong agent (or a generic one). Always pin the type.
 
-The only exceptions to this whole rule: (a) the user explicitly asks for raw inline output, or (b) the `Agent` tool is unavailable.
+The subagent's transcript will stream into your context while it runs — that's the cost of staying interactive. The structured summary at the end is still what you read; the streaming output is just so the user can approve permission prompts in real time.
+
+The only exceptions: (a) the user explicitly asks for raw inline output, or (b) the `Agent` tool is unavailable.
 
 ### Why `devtools::load_all()` first for inline runs
 
@@ -41,10 +43,6 @@ The only exceptions to this whole rule: (a) the user explicitly asks for raw inl
 ### About the subagent
 
 The `r-test-runner` subagent writes logs and summaries under a configurable directory — default `./r-tests-runner/`, overridable per-project or globally by setting `R_TEST_RUNNER_LOG_DIR` in `settings.json`'s `env` block. The directory gets a self-ignoring `.gitignore` on first run, so it's safe to leave untracked. Each dispatch produces `<LOGDIR>/<timestamp>.log` plus a `<LOGDIR>/0_latest.log` symlink (the `0_` prefix keeps it at the top of `ls`); the user can `tail -f <LOGDIR>/0_latest.log` to watch a run in progress. The reply always includes the resolved log path on a `**Log:**` line, so just read that — don't assume the default.
-
-#### If the subagent's first Bash call (`mkdir -p ...`) gets denied
-
-This means the project's `.claude/settings.local.json` is missing the allow rules for the subagent's setup commands (`mkdir`, `printf`, `ln -sf`, `tee`, etc.). Plugin-shipped allow rules don't always reach subagent shells. Tell the user to run `/setup-r-test-runner` once in this project — the skill writes the rules to `.claude/settings.local.json` — then re-dispatch.
 
 #### Resolving the log dir before dispatch
 
